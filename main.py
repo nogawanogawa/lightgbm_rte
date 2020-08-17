@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from metaflow import FlowSpec, step
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
@@ -10,6 +11,7 @@ from fe_named_entity import FeatureNamedEntity
 from fe_non_intersection_words import FeatureNonIntersectionWords
 from fe_number import FeatureNumber
 from fe_w2v import FeatureW2V
+from fe_pretrained_bert import FeaturePretrainedBert
 from lgbm_classifer import LightGBMClassifer
 
 
@@ -42,8 +44,9 @@ class LGBM_RTE(FlowSpec):
         self.labels = le.fit_transform(labels)
 
         self.next(self.number, self.named_entity, self.intersection_words, 
-                    self.initial_charactor, self.w2v, self.non_intersection_words)
+                    self.initial_charactor, self.w2v, self.non_intersection_words, self.pretrained_bert_embedding)
 
+    # Feature Engineering
     @step
     def number(self):
         num = FeatureNumber()
@@ -105,6 +108,20 @@ class LGBM_RTE(FlowSpec):
         self.next(self.train)
 
     @step
+    def pretrained_bert_embedding(self):
+        pretrained_bert_embedding = FeaturePretrainedBert()
+
+        self.f8 = np.empty((0,768), float)
+        for sent1, sent2 in zip(self.t1, self.t2):
+            embedding = pretrained_bert_embedding.get(primary_text=sent1, secondary_text=sent2)
+            embedding = embedding.reshape(1, 768)
+            self.f8 = np.append(self.f8, embedding, axis=0)
+
+        self.next(self.train)
+
+    # Training
+
+    @step
     def train(self, inputs):
         f1 = inputs.number.f1
         f2 = inputs.named_entity.f2
@@ -112,6 +129,7 @@ class LGBM_RTE(FlowSpec):
         f4 = inputs.initial_charactor.f4
         f5 = inputs.w2v.f5
         f7 = inputs.non_intersection_words.f7
+        f8 = inputs.pretrained_bert_embedding.f8
 
         data = pd.DataFrame({'f1': f1,
                             'f2': f2,
@@ -120,6 +138,10 @@ class LGBM_RTE(FlowSpec):
                             'f5': f5,
                             'f7': f7
                             })
+
+        embedding = pd.DataFrame(f8)
+
+        data = pd.merge(data, embedding, right_index=True, left_index=True, how="left")
 
         label = inputs.number.labels
 
