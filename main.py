@@ -52,7 +52,6 @@ class LGBM_RTE(FlowSpec):
         num = FeatureNumber()
         
         self.f1 = []
-        self.labels = self.labels
         for sent1, sent2 in zip(self.t1, self.t2):
             self.f1.append(num.get(primary_text=sent1, secondary_text=sent2))
 
@@ -109,10 +108,15 @@ class LGBM_RTE(FlowSpec):
 
     @step
     def pretrained_bert_embedding(self):
-        pretrained_bert_embedding = FeaturePretrainedBert()
+        pretrained_bert_embedding = FeaturePretrainedBert()   
+        t1 = self.t1
+        t2 = self.t2
+        self.labels = self.labels
+
+        pretrained_bert_embedding.train(primary_texts=self.t1, secondary_texts=self.t2, labels=self.labels)
 
         self.f8 = np.empty((0,768), float)
-        for sent1, sent2 in zip(self.t1, self.t2):
+        for sent1, sent2 in zip(t1, t2):
             embedding = pretrained_bert_embedding.get(primary_text=sent1, secondary_text=sent2)
             embedding = embedding.reshape(1, 768)
             self.f8 = np.append(self.f8, embedding, axis=0)
@@ -120,7 +124,6 @@ class LGBM_RTE(FlowSpec):
         self.next(self.train)
 
     # Training
-
     @step
     def train(self, inputs):
         f1 = inputs.number.f1
@@ -143,7 +146,7 @@ class LGBM_RTE(FlowSpec):
 
         data = pd.merge(data, embedding, right_index=True, left_index=True, how="left")
 
-        label = inputs.number.labels
+        label = inputs.pretrained_bert_embedding.labels
 
         train_df, self.test_df, y_train_s, self.y_test_s = train_test_split(
            data, label, test_size=0.1, random_state=0, stratify=label
