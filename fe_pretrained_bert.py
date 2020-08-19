@@ -16,7 +16,6 @@ class FeaturePretrainedBert:
             output_attentions = False, # アテンションベクトルを出力するか
             output_hidden_states = True, # 隠れ層を出力するか
         )
-        self.model.eval()
 
     def max_len(self, primary_texts, secondary_texts):
         # 最大単語数の確認
@@ -115,15 +114,24 @@ class FeaturePretrainedBert:
 
             log_metric("train_loss", train_loss, step=epoch)
 
+        dir_name = './model/'
+        self.tokenizer.save_pretrained(dir_name)
+        self.model.save_pretrained(dir_name)
+
         return
 
     def get_embedding(self, text: str):
-        tokenized_text = self.tokenizer.tokenize(text)
-        indexed_tokens = self.tokenizer.convert_tokens_to_ids(tokenized_text)
+        tokenizer = BertJapaneseTokenizer.from_pretrained('./model/')
+        model = BertForSequenceClassification.from_pretrained("./model/")
+
+        model.eval()
+        
+        tokenized_text = tokenizer.tokenize(text)
+        indexed_tokens = tokenizer.convert_tokens_to_ids(tokenized_text)
         tokens_tensor = torch.tensor([indexed_tokens])
 
         with torch.no_grad(): # 勾配計算なし
-            all_encoder_layers = self.model(tokens_tensor)
+            all_encoder_layers = model(tokens_tensor)
 
         embedding = all_encoder_layers[1][-2].numpy()[0]
         result = np.mean(embedding, axis=0)
